@@ -1,58 +1,83 @@
 import "modern-normalize/modern-normalize.css";
 import { useEffect, useState } from "react";
-import { nanoid } from "nanoid";
+import toast, { Toaster } from "react-hot-toast";
 import "./App.css";
-import ContactForm from "./components/ContactForm/ContactForm";
-import SearchBox from "./components/SearchBox/SearchBox";
-import ContactList from "./components/ContactList/ContactList";
-import defaultContacts from "./data/defaultContacts.json";
-
-const CONTACTS_KEY = "contacts";
+import SearchBar from "./components/SearchBar/SearchBar";
+import ImageGallery from "./components/ImageGallery/ImageGallery";
+import Loader from "./components/Loader/Loader";
+import { searchImages } from "./api/api";
+import LoadMoreBtn from "./components/LoadMoreBtn/LoadMoreBtn";
+import ErrorMessage from "./components/ErrorMessage/ErrorMessage";
+import ImageModal from "./components/ImageModal/ImageModal";
+import NotFoundMessage from "./components/NotFoundMessage/NotFoundMessage";
 
 const App = () => {
-  const [filter, setFilter] = useState("");
+  const [hits, setHits] = useState([]);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [selectedImage, setSelectedImage] = useState(null);
 
-  const [contacts, setContacts] = useState(() => {
-    const savedContacts = window.localStorage.getItem(CONTACTS_KEY);
-    if (savedContacts) {
-      return JSON.parse(savedContacts);
-    }
-    return defaultContacts;
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-  const addContact = (name, number) => {
-    setContacts((prevContacts) => {
-      const contact = {
-        id: nanoid(),
-        name,
-        number,
-      };
-      return [...prevContacts, contact];
-    });
+  const handleSearch = async (query) => {
+    setQuery(query);
+    setPage(1);
+    setHits([]);
   };
 
-  const deleteContact = (id) => {
-    setContacts((prevContacts) =>
-      prevContacts.filter((contact) => contact.id !== id)
-    );
+  const getNextPage = async () => {
+    setPage((prevPage) => prevPage + 1);
   };
 
   useEffect(() => {
-    window.localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
-  }, [contacts]);
+    const fetchImages = async () => {
+      try {
+        setIsLoading(true);
+        setError(false);
+        const data = await searchImages(query, page);
+        if (page === 1) {
+          setHits([...data.results]);
+          setTotalPages(data.total_pages);
+        } else {
+          setHits((prevHits) => [...prevHits, ...data.results]);
+        }
+      } catch (error) {
+        setError(true);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    if (query) {
+      fetchImages();
+    }
+  }, [query, page]);
 
-  const visibleContacts = contacts.filter((contact) =>
-    contact.name.toLowerCase().includes(filter.toLowerCase())
-  );
+  const openModal = (image) => {
+    setSelectedImage(image);
+  };
+
+  const closeModal = () => {
+    setSelectedImage(null);
+  };
 
   return (
     <>
       <div>
-        <h1>Phonebook</h1>
-        <ContactForm addContact={addContact} />
-        <SearchBox filter={filter} setFilter={setFilter} />
-        <ContactList contacts={visibleContacts} deleteContact={deleteContact} />
+        <Toaster />
       </div>
+      <SearchBar onSubmit={handleSearch} />
+      {hits.length > 0 && <ImageGallery hits={hits} onImageClick={openModal} />}
+      {isLoading && <Loader />}
+      {totalPages > page && !isLoading && <LoadMoreBtn onClick={getNextPage} />}
+      {error && <ErrorMessage />}
+      {query && hits.length === 0 && !isLoading && !error && (
+        <NotFoundMessage query={query} />
+      )}
+      {selectedImage && (
+        <ImageModal onClose={closeModal} image={selectedImage} />
+      )}
     </>
   );
 };
